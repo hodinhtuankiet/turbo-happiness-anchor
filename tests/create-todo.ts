@@ -3,15 +3,17 @@ import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { expect } from "chai";
 
-describe("create-todo", () => {
+describe("toggle-todo", () => {
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
 
   const program = anchor.workspace.TodoProgram as Program<TodoProgram>;
+
   const name = "Tuan Kiet";
+  const content = "Learn Anchor";
 
   let profile: anchor.web3.PublicKey;
-  let profileAccount: any;
+  let todo: anchor.web3.PublicKey;
 
   before(async () => {
     // Derive profile PDA
@@ -20,8 +22,8 @@ describe("create-todo", () => {
       program.programId
     );
 
-    // Call createProfile
-    const tx = await program.methods
+    // Create profile
+    await program.methods
       .createProfile(name)
       .accountsPartial({
         creator: provider.publicKey,
@@ -30,24 +32,19 @@ describe("create-todo", () => {
       })
       .rpc();
 
-    profileAccount = await program.account.profile.fetch(profile);
-
-    console.log("Profile created", profileAccount);
-    console.log("Your transaction create profile signature", tx);
-  });
-
-  it("Create todo", async () => {
-    const content = "Learn Rust";
-
-    // Convert todo_count to number first before using in Buffer.from
+    // Get todo count for PDA derivation
+    const profileAccount = await program.account.profile.fetch(profile);
     const todoCount = profileAccount.todoCount;
 
+    // Derive todo PDA
     const [todo] = anchor.web3.PublicKey.findProgramAddressSync(
-      [Buffer.from("todo"), provider.publicKey.toBytes(), Buffer.from([todoCount])],
+      [Buffer.from("todo"), provider.publicKey.toBytes(), profile.toBytes()],
       program.programId
     );
 
-    const tx = await program.methods
+
+    // Create todo
+    await program.methods
       .createTodo(content)
       .accountsPartial({
         creator: provider.publicKey,
@@ -56,21 +53,27 @@ describe("create-todo", () => {
         systemProgram: anchor.web3.SystemProgram.programId,
       })
       .rpc();
+  });
 
-    console.log("Your transaction create todo signature:", tx);
+  it("Toggles the todo completion status", async () => {
+    // Fetch current todo state
+    let todoAccount = await program.account.todo.fetch(todo);
+    const initialStatus = todoAccount.completed;
 
-    const todoAccount = await program.account.todo.fetch(todo);
-    expect(todoAccount.content).to.equal(content);
-    expect(todoAccount.completed).to.equal(false);
+    // Call toggleTodo
+    const tx = await program.methods
+      .toggleTodo()
+      .accountsPartial({
+        authority: provider.publicKey,
+        todo: todo,
+        profile: profile,
+      })
+      .rpc();
 
-    // Save current count
-    const currentTodoCount = todoCount;
+    console.log("Your transaction toggle todo signature:", tx);
 
-    // Fetch updated profileAccount
-    profileAccount = await program.account.profile.fetch(profile);
-    console.log("profileAccount after creating todo:", profileAccount);
-
-    // Compare new count to previous
-    expect(profileAccount.todoCount).to.equal(currentTodoCount + 1);
+    // Fetch new state
+    todoAccount = await program.account.todo.fetch(todo);
+    expect(todoAccount.completed).to.equal(!initialStatus); // Status should be flipped
   });
 });

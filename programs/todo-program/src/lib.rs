@@ -28,6 +28,12 @@ pub mod todo_program {
 
         Ok(())
     }
+    pub fn toggle_todo(ctx: Context<ToggleTodo>) -> Result<()> {
+        let todo = &mut ctx.accounts.todo;
+        todo.completed = !todo.completed; // Flip the boolean value
+        Ok(())
+    }
+
 }
 
 #[derive(Accounts)]
@@ -69,4 +75,25 @@ pub struct CreateTodo<'info> {
     pub profile: Account<'info, Profile>,
 
     pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct ToggleTodo<'info> {
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"todo", authority.key().as_ref(), todo.profile.to_bytes().as_ref()],
+        bump,
+        has_one = profile
+    )]
+    pub todo: Account<'info, Todo>,
+
+    #[account(
+        seeds = [b"profile", authority.key().as_ref()],
+        bump,
+        constraint = profile.authority == authority.key()
+    )]
+    pub profile: Account<'info, Profile>,
 }
